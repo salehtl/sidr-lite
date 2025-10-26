@@ -1,8 +1,9 @@
 import type { FamilyTree } from '../types/domain'
+import { migrateV1ToV2, needsMigration } from './migrations'
 
 const STORAGE_KEY = 'family-tree-data'
 const DEFAULT_DATA: FamilyTree = {
-  version: 1,
+  version: 2,
   persons: [],
   marriages: [],
   children: []
@@ -21,6 +22,15 @@ export function loadFromStorage(): FamilyTree {
     if (!data.version || !Array.isArray(data.persons) || !Array.isArray(data.marriages) || !Array.isArray(data.children)) {
       console.warn('Invalid stored data, using defaults')
       return DEFAULT_DATA
+    }
+    
+    // Check if migration is needed
+    if (needsMigration(data)) {
+      console.log('Migrating data from v1 to v2...')
+      const migratedData = migrateV1ToV2(data)
+      // Save migrated data back to storage
+      saveToStorage(migratedData)
+      return migratedData
     }
     
     return data

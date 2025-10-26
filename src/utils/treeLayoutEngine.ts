@@ -65,16 +65,17 @@ export function calculateHierarchicalLayout(
     
     // Add marriage nodes for this generation
     const marriages = data.marriages.filter(marriage => {
-      const husband = data.persons.find(p => p.id === marriage.husbandId)
-      const wife = data.persons.find(p => p.id === marriage.wifeId)
+      const husband = marriage.husbandId ? data.persons.find(p => p.id === marriage.husbandId) : null
+      const wife = marriage.wifeId ? data.persons.find(p => p.id === marriage.wifeId) : null
       return husband && wife && 
+             marriage.husbandId && marriage.wifeId &&
              personIds.includes(marriage.husbandId) && 
              personIds.includes(marriage.wifeId)
     })
     
     marriages.forEach(marriage => {
-      const husbandIndex = personIds.indexOf(marriage.husbandId)
-      const wifeIndex = personIds.indexOf(marriage.wifeId)
+      const husbandIndex = personIds.indexOf(marriage.husbandId!)
+      const wifeIndex = personIds.indexOf(marriage.wifeId!)
       
       if (husbandIndex !== -1 && wifeIndex !== -1) {
         const husbandX = positions[husbandIndex]

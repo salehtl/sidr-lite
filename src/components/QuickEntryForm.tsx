@@ -7,19 +7,22 @@ import { Check, X } from 'lucide-react'
 import type { Gender, RelationshipType } from '../types/domain'
 import RelationshipSelector from './RelationshipSelector'
 import SmartPicker from './SmartPicker'
+import NameAutocomplete, { useNameLearning } from './NameAutocomplete'
 
 export default function QuickEntryForm() {
   const [name, setName] = useState('')
-  const [gender, setGender] = useState<Gender>('U')
+  const [gender, setGender] = useState<Gender>('M')
   const [relationshipType, setRelationshipType] = useState<RelationshipType | null>(null)
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [lastCreatedPerson, setLastCreatedPerson] = useState<{id: string, type: RelationshipType, targetId?: string, marriageId?: string} | null>(null)
+  
+  const { learnName } = useNameLearning()
   
   const nameInputRef = useRef<HTMLInputElement>(null)
   const targetPickerRef = useRef<HTMLDivElement>(null)
-  const genderSelectRef = useRef<HTMLSelectElement>(null)
   
   const {
     createPerson,
@@ -27,6 +30,7 @@ export default function QuickEntryForm() {
     addChild,
     addSibling,
     addParent,
+    completeParentMarriage,
     selectPerson,
     selectMarriage,
     data,
@@ -47,14 +51,165 @@ export default function QuickEntryForm() {
   
   useKeyboardNav({ shortcuts })
   
-  function clearForm() {
+  function clearForm(preserveContext = false) {
     setName('')
-    setGender('U')
-    setRelationshipType(null)
-    setSelectedTargetId(null)
+    if (!preserveContext) {
+      setRelationshipType(null)
+      setSelectedTargetId(null)
+    }
     setError(null)
     setSuccess(null)
+    setLastCreatedPerson(null)
     nameInputRef.current?.focus()
+  }
+
+  // Quick action functions
+  function prefillForSibling(personId: string) {
+    const person = data.persons.find(p => p.id === personId)
+    if (!person) return
+    
+    // Find the person's parents
+    const childLink = data.children.find(c => c.childId === personId)
+    if (childLink) {
+      const marriage = data.marriages.find(m => m.id === childLink.marriageId)
+      if (marriage) {
+        setRelationshipType('child')
+        setSelectedTargetId(marriage.id)
+        setGender(person.gender) // Same gender as sibling
+        nameInputRef.current?.focus()
+      }
+    }
+  }
+
+  function prefillForSpouse(personId: string) {
+    const person = data.persons.find(p => p.id === personId)
+    if (!person) return
+    
+    setRelationshipType('spouse')
+    setSelectedTargetId(personId)
+    setGender(person.gender === 'M' ? 'F' : 'M') // Opposite gender
+    nameInputRef.current?.focus()
+  }
+
+  function prefillForChild(marriageId: string) {
+    setRelationshipType('child')
+    setSelectedTargetId(marriageId)
+    setGender('M') // Default to male
+    nameInputRef.current?.focus()
+  }
+
+  function prefillForParent(childId: string) {
+    setRelationshipType('parent')
+    setSelectedTargetId(childId)
+    setGender('M') // Default to male
+    nameInputRef.current?.focus()
+  }
+
+  function prefillForSecondParent(marriageId: string) {
+    setRelationshipType('parent')
+    setSelectedTargetId(null) // No target needed for completion
+    setGender('M') // Default to male
+    nameInputRef.current?.focus()
+    
+    // Store marriage ID for completion
+    setLastCreatedPerson(prev => prev ? { ...prev, marriageId } : null)
+  }
+
+  // Intelligent next person suggestion
+  function getSuggestedNextAction(): { relationshipType: RelationshipType; targetId?: string; gender: Gender; message: string } | null {
+    const persons = data.persons
+    const marriages = data.marriages
+    const children = data.children
+
+    // If no persons, suggest root
+    if (persons.length === 0) {
+      return {
+        relationshipType: 'root',
+        gender: 'M',
+        message: 'Start by adding the first person (root)'
+      }
+    }
+
+    // If only one person (root), suggest spouse
+    if (persons.length === 1) {
+      const rootPerson = persons[0]
+      return {
+        relationshipType: 'spouse',
+        targetId: rootPerson.id,
+        gender: rootPerson.gender === 'M' ? 'F' : 'M',
+        message: `Add spouse for ${rootPerson.name}`
+      }
+    }
+
+    // Find persons without spouses
+    const personsWithoutSpouses = persons.filter(person => {
+      const hasActiveMarriage = marriages.some(m => 
+        m.status === 'active' && (m.husbandId === person.id || m.wifeId === person.id)
+      )
+      return !hasActiveMarriage
+    })
+
+    if (personsWithoutSpouses.length > 0) {
+      const person = personsWithoutSpouses[0]
+      return {
+        relationshipType: 'spouse',
+        targetId: person.id,
+        gender: person.gender === 'M' ? 'F' : 'M',
+        message: `Add spouse for ${person.name}`
+      }
+    }
+
+    // Find marriages without children
+    const marriagesWithoutChildren = marriages.filter(marriage => {
+      const hasChildren = children.some(c => c.marriageId === marriage.id)
+      return marriage.status === 'active' && !hasChildren
+    })
+
+    if (marriagesWithoutChildren.length > 0) {
+      const marriage = marriagesWithoutChildren[0]
+      const husband = persons.find(p => p.id === marriage.husbandId)
+      const wife = persons.find(p => p.id === marriage.wifeId)
+      return {
+        relationshipType: 'child',
+        targetId: marriage.id,
+        gender: 'M',
+        message: `Add child to ${husband?.name} & ${wife?.name}`
+      }
+    }
+
+    // Find persons with only one parent
+    const personsWithOneParent = persons.filter(person => {
+      const parentCount = children.filter(c => c.childId === person.id).length
+      return parentCount === 1
+    })
+
+    if (personsWithOneParent.length > 0) {
+      const person = personsWithOneParent[0]
+      return {
+        relationshipType: 'parent',
+        targetId: person.id,
+        gender: 'M',
+        message: `Add other parent for ${person.name}`
+      }
+    }
+
+    // Find persons with parents but no siblings
+    const personsWithParents = persons.filter(person => {
+      const hasParents = children.some(c => c.childId === person.id)
+      return hasParents
+    })
+
+    if (personsWithParents.length > 0) {
+      const person = personsWithParents[0]
+      return {
+        relationshipType: 'sibling',
+        targetId: person.id,
+        gender: person.gender === 'M' ? 'F' : 'M',
+        message: `Add sibling for ${person.name}`
+      }
+    }
+
+    return null
   }
   
   async function handleSubmit() {
@@ -80,8 +235,8 @@ export default function QuickEntryForm() {
     }
     
     try {
-      let personId: string
-      let message: string
+      let personId: string = ''
+      let message: string = ''
       
       switch (relationshipType) {
         case 'root':
@@ -106,18 +261,49 @@ export default function QuickEntryForm() {
             setError('Please select a marriage to add the child to')
             return
           }
-          addChild(selectedTargetId, name, gender)
+          personId = addChild(selectedTargetId, name, gender)
           message = 'Child added to marriage!'
           break
           
         case 'parent':
-          if (!selectedTargetId) {
+          if (!selectedTargetId && !lastCreatedPerson?.marriageId) {
             setError('Please select a person to add parent to')
             return
           }
-          personId = addParent(selectedTargetId, name, gender)
-          selectPerson(personId)
-          message = 'Parent added!'
+          
+          if (lastCreatedPerson?.marriageId) {
+            // Completing a parent marriage
+            personId = createPerson(name, gender)
+            completeParentMarriage(lastCreatedPerson.marriageId, personId)
+            selectPerson(personId)
+            message = 'Second parent added! Parent pair completed!'
+            setLastCreatedPerson(null) // Clear the context
+          } else {
+            // Adding first parent
+            if (!selectedTargetId) {
+              setError('Please select a person to add parent to')
+              return
+            }
+            personId = addParent(selectedTargetId, name, gender)
+            selectPerson(personId)
+            
+            // Check if marriage is incomplete after adding parent
+            const childLink = data.children.find(c => c.childId === selectedTargetId)
+            const marriage = childLink ? data.marriages.find(m => m.id === childLink.marriageId) : null
+            const isIncomplete = marriage && (!marriage.husbandId || !marriage.wifeId)
+            
+            if (isIncomplete) {
+              message = 'First parent added! Add the other parent?'
+              setLastCreatedPerson({ 
+                id: personId, 
+                type: 'parent', 
+                targetId: selectedTargetId,
+                marriageId: marriage!.id // Store for completion
+              })
+            } else {
+              message = 'Parent added!'
+            }
+          }
           break
           
         case 'sibling':
@@ -136,10 +322,14 @@ export default function QuickEntryForm() {
       }
       
       setSuccess(message)
+      setLastCreatedPerson({ id: personId, type: relationshipType, targetId: selectedTargetId || undefined })
+      
+      // Learn the name for future suggestions
+      learnName(name, gender)
       
       // Clear form for next entry and auto-focus name input
       setTimeout(() => {
-        clearForm()
+        clearForm(true) // Preserve context for quick actions
         setTimeout(() => {
           nameInputRef.current?.focus()
         }, 100)
@@ -174,14 +364,14 @@ export default function QuickEntryForm() {
         } else if (targetPerson.gender === 'F') {
           setGender('M')
         }
-        // Keep 'U' if target is unknown gender
+        // Default to opposite gender
       }
     } else if (type === 'parent' || type === 'sibling') {
-      // Keep unknown for parent/sibling relationships
-      setGender('U')
+      // Default to male for parent/sibling relationships
+      setGender('M')
     } else if (type === 'root') {
-      // Keep unknown for root person
-      setGender('U')
+      // Default to male for root person
+      setGender('M')
     }
     
     // Auto-focus logic based on relationship type
@@ -260,6 +450,8 @@ export default function QuickEntryForm() {
   React.useEffect(() => {
     validateInRealTime()
   }, [name, gender, relationshipType, selectedTargetId, data])
+
+  // Enhanced Enter key handling - now handled by NameAutocomplete component
   
   const getSubmitButtonText = () => {
     if (!relationshipType) return 'Select Relationship'
@@ -290,7 +482,7 @@ export default function QuickEntryForm() {
     }
     
     if (field === 'name' && name.trim().length >= 2) return 'valid'
-    if (field === 'gender' && gender !== 'U') return 'valid'
+    if (field === 'gender') return 'valid'
     if (field === 'relationship' && relationshipType) return 'valid'
     if (field === 'target' && (relationshipType === 'root' || selectedTargetId)) return 'valid'
     
@@ -322,17 +514,16 @@ export default function QuickEntryForm() {
             Name
           </label>
           <div className="relative">
-            <input
-              ref={nameInputRef}
-              id="name"
-              type="text"
+            <NameAutocomplete
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 transition-all duration-200 ${getValidationBorderColor(getFieldValidationStatus('name'))}`}
+              onChange={setName}
+              gender={gender}
               placeholder="Enter name"
-              autoFocus
+              className={`w-full ${getValidationBorderColor(getFieldValidationStatus('name'))}`}
+              existingNames={data.persons.map(p => p.name)}
+              onFocus={() => nameInputRef.current?.focus()}
             />
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
               {getValidationIcon(getFieldValidationStatus('name'))}
             </div>
           </div>
@@ -353,17 +544,38 @@ export default function QuickEntryForm() {
             )}
           </label>
           <div className="relative">
-            <select
-              ref={genderSelectRef}
-              id="gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value as Gender)}
-              className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 transition-all duration-200 ${getValidationBorderColor(getFieldValidationStatus('gender'))}`}
-            >
-              <option value="U">Unknown</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-            </select>
+            <div className={`flex border rounded-md overflow-hidden ${getValidationBorderColor(getFieldValidationStatus('gender'))}`}>
+              <label className={`flex-1 flex items-center justify-center px-3 py-2 cursor-pointer transition-all duration-200 ${
+                gender === 'M' 
+                  ? 'bg-blue-50 text-blue-700 border-r border-blue-200' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}>
+                <input
+                  type="radio"
+                  name="gender"
+                  value="M"
+                  checked={gender === 'M'}
+                  onChange={(e) => setGender(e.target.value as Gender)}
+                  className="sr-only"
+                />
+                <span className="text-sm font-medium">Male (♂)</span>
+              </label>
+              <label className={`flex-1 flex items-center justify-center px-3 py-2 cursor-pointer transition-all duration-200 ${
+                gender === 'F' 
+                  ? 'bg-pink-50 text-pink-700' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}>
+                <input
+                  type="radio"
+                  name="gender"
+                  value="F"
+                  checked={gender === 'F'}
+                  onChange={(e) => setGender(e.target.value as Gender)}
+                  className="sr-only"
+                />
+                <span className="text-sm font-medium">Female (♀)</span>
+              </label>
+            </div>
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
               {getValidationIcon(getFieldValidationStatus('gender'))}
             </div>
@@ -505,6 +717,92 @@ export default function QuickEntryForm() {
       {success && (
         <div className="text-sm text-green-600 bg-green-50 p-3 rounded-md border border-green-200">
           {success}
+        </div>
+      )}
+
+      {/* Smart Suggestion */}
+      {!success && !error && (
+        (() => {
+          const suggestion = getSuggestedNextAction()
+          if (!suggestion) return null
+          
+          return (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-blue-900">Smart Suggestion</span>
+              </div>
+              <p className="text-sm text-blue-800 mb-3">{suggestion.message}</p>
+              <button
+                onClick={() => {
+                  setRelationshipType(suggestion.relationshipType)
+                  if (suggestion.targetId) {
+                    setSelectedTargetId(suggestion.targetId)
+                  }
+                  setGender(suggestion.gender)
+                  nameInputRef.current?.focus()
+                }}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Use This Suggestion
+              </button>
+            </div>
+          )
+        })()
+      )}
+
+      {/* Quick Action Buttons */}
+      {success && lastCreatedPerson && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <div className="text-sm font-medium text-blue-900 mb-3">Quick Actions:</div>
+          <div className="flex flex-wrap gap-2">
+            {lastCreatedPerson.type === 'child' && lastCreatedPerson.targetId && (
+              <button
+                onClick={() => prefillForChild(lastCreatedPerson.targetId!)}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                + Add Another Child
+              </button>
+            )}
+            {lastCreatedPerson.type === 'root' && (
+              <button
+                onClick={() => prefillForSpouse(lastCreatedPerson.id)}
+                className="px-3 py-1 bg-pink-600 text-white text-sm rounded-md hover:bg-pink-700 transition-colors"
+              >
+                + Add Spouse
+              </button>
+            )}
+            {lastCreatedPerson.type === 'spouse' && lastCreatedPerson.targetId && (
+              <button
+                onClick={() => prefillForChild(lastCreatedPerson.targetId!)}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                + Add Child
+              </button>
+            )}
+            {lastCreatedPerson.type === 'child' && lastCreatedPerson.id && (
+              <button
+                onClick={() => prefillForSibling(lastCreatedPerson.id)}
+                className="px-3 py-1 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
+              >
+                + Add Sibling
+              </button>
+            )}
+            {lastCreatedPerson.type === 'parent' && lastCreatedPerson.marriageId && (
+              <button
+                onClick={() => prefillForSecondParent(lastCreatedPerson.marriageId)}
+                className="px-3 py-1 bg-orange-600 text-white text-sm rounded-md hover:bg-orange-700 transition-colors"
+              >
+                + Add Other Parent
+              </button>
+            )}
+            <button
+              onClick={() => setLastCreatedPerson(null)}
+              className="px-3 py-1 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600 transition-colors"
+            >
+              ✕ Dismiss
+            </button>
+          </div>
         </div>
       )}
       

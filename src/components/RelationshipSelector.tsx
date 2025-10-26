@@ -114,6 +114,7 @@ export default function RelationshipSelector({
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
+            data-relationship-selector
             className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-left flex items-center justify-between transition-all duration-200 ${
               selectedOption 
                 ? `${selectedOption.borderColor} ${selectedOption.bgColor}` 

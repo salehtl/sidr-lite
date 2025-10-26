@@ -97,7 +97,7 @@ function MarriageDetailScreen() {
                 className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
                 onClick={() => selectPerson(marriage.husbandId)}
               >
-                <span className="text-lg">{getGenderIcon(husband?.gender || 'U')}</span>
+                <span className="text-lg">{getGenderIcon(husband?.gender || 'M')}</span>
                 <span className="font-medium">{husband?.name || 'Unknown'}</span>
               </div>
             </div>
@@ -109,7 +109,7 @@ function MarriageDetailScreen() {
                 className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
                 onClick={() => selectPerson(marriage.wifeId)}
               >
-                <span className="text-lg">{getGenderIcon(wife?.gender || 'U')}</span>
+                <span className="text-lg">{getGenderIcon(wife?.gender || 'F')}</span>
                 <span className="font-medium">{wife?.name || 'Unknown'}</span>
               </div>
             </div>
@@ -131,7 +131,7 @@ function MarriageDetailScreen() {
                       onClick={() => selectPerson(child.childId)}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{getGenderIcon(childPerson?.gender || 'U')}</span>
+                        <span className="text-lg">{getGenderIcon(childPerson?.gender || 'M')}</span>
                         <span className="font-medium">{childPerson?.name || 'Unknown'}</span>
                       </div>
                     </div>

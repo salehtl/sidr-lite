@@ -1,5 +1,6 @@
 import React from 'react'
 import { useFamilyTreeStore } from '../store/familyTreeStore'
+import { checkWarnings } from '../store/validators'
 import { Users, Heart, Baby, Crown, Filter } from 'lucide-react'
 
 export default function FamilyStatistics() {
@@ -88,7 +89,12 @@ export default function FamilyStatistics() {
       {stats.issues.length > 0 && (
         <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
           <div className="text-xs text-yellow-800">
-            <strong>Issues found:</strong> {stats.issues.length} items need attention
+            <strong>Data quality issues:</strong> {stats.issues.length} items need attention
+          </div>
+          <div className="mt-1 text-xs text-yellow-700">
+            {stats.issues.map((issue, index) => (
+              <div key={index}>• {issue.message}</div>
+            ))}
           </div>
         </div>
       )}
@@ -96,35 +102,31 @@ export default function FamilyStatistics() {
   )
 }
 
-function getIssues(data: any): string[] {
-  const issues: string[] = []
+function getIssues(data: any): Array<{type: string, message: string}> {
+  const issues: Array<{type: string, message: string}> = []
   
-  // Check for persons without spouses
-  const personsWithoutSpouses = data.persons.filter((person: any) => {
-    const hasMarriage = data.marriages.some((m: any) => 
-      m.husbandId === person.id || m.wifeId === person.id
-    )
-    return !hasMarriage && !person.isRoot
-  })
+  // Use the actual validation system
+  const warningData = checkWarnings(data)
   
-  if (personsWithoutSpouses.length > 0) {
-    issues.push(`${personsWithoutSpouses.length} person(s) without spouse`)
+  if (warningData.isolatedPersons.length > 0) {
+    issues.push({
+      type: 'isolated',
+      message: `${warningData.isolatedPersons.length} isolated person(s)`
+    })
   }
   
-  // Check for marriages without children
-  const marriagesWithoutChildren = data.marriages.filter((marriage: any) => {
-    const hasChildren = data.children.some((c: any) => c.marriageId === marriage.id)
-    return !hasChildren
-  })
-  
-  if (marriagesWithoutChildren.length > 0) {
-    issues.push(`${marriagesWithoutChildren.length} marriage(s) without children`)
+  if (warningData.orphanedChildren.length > 0) {
+    issues.push({
+      type: 'orphaned',
+      message: `${warningData.orphanedChildren.length} potentially orphaned`
+    })
   }
   
-  // Check for persons with unknown gender
-  const unknownGender = data.persons.filter((p: any) => p.gender === 'U')
-  if (unknownGender.length > 0) {
-    issues.push(`${unknownGender.length} person(s) with unknown gender`)
+  if (warningData.autoTerminatedMarriages.length > 0) {
+    issues.push({
+      type: 'terminated',
+      message: `${warningData.autoTerminatedMarriages.length} auto-terminated marriage(s)`
+    })
   }
   
   return issues

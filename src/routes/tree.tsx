@@ -12,6 +12,7 @@ import { validateTreeNodes, getNodeValidationStatus } from '../utils/treeValidat
 import { useTreeKeyboard } from '../hooks/useTreeKeyboard'
 import { useTouchGestures } from '../hooks/useTouchGestures'
 import { useVirtualization } from '../hooks/useVirtualization'
+import DataQualityBadge from '../components/DataQualityBadge'
 import { AlertTriangle, CheckCircle, AlertCircle, Search, Activity } from 'lucide-react'
 
 export const Route = createFileRoute('/tree')({
@@ -86,29 +87,33 @@ function TreeScreen() {
       const marriageValidationStatus = getNodeValidationStatus(marriageNodeId, validation)
       
       // Edges: Person -> Marriage
-      edges.push({
-        id: `${marriage.husbandId}-${marriageNodeId}`,
-        source: marriage.husbandId,
-        target: marriageNodeId,
-        type: 'smoothstep',
-        style: {
-          stroke: marriageValidationStatus === 'error' ? '#ef4444' : 
-                  marriageValidationStatus === 'warning' ? '#f59e0b' : '#6b7280',
-          strokeWidth: marriageValidationStatus === 'error' ? 3 : 2
-        }
-      })
+      if (marriage.husbandId) {
+        edges.push({
+          id: `${marriage.husbandId}-${marriageNodeId}`,
+          source: marriage.husbandId,
+          target: marriageNodeId,
+          type: 'smoothstep',
+          style: {
+            stroke: marriageValidationStatus === 'error' ? '#ef4444' : 
+                    marriageValidationStatus === 'warning' ? '#f59e0b' : '#6b7280',
+            strokeWidth: marriageValidationStatus === 'error' ? 3 : 2
+          }
+        })
+      }
       
-      edges.push({
-        id: `${marriageNodeId}-${marriage.wifeId}`,
-        source: marriageNodeId,
-        target: marriage.wifeId,
-        type: 'smoothstep',
-        style: {
-          stroke: marriageValidationStatus === 'error' ? '#ef4444' : 
-                  marriageValidationStatus === 'warning' ? '#f59e0b' : '#6b7280',
-          strokeWidth: marriageValidationStatus === 'error' ? 3 : 2
-        }
-      })
+      if (marriage.wifeId) {
+        edges.push({
+          id: `${marriageNodeId}-${marriage.wifeId}`,
+          source: marriageNodeId,
+          target: marriage.wifeId,
+          type: 'smoothstep',
+          style: {
+            stroke: marriageValidationStatus === 'error' ? '#ef4444' : 
+                    marriageValidationStatus === 'warning' ? '#f59e0b' : '#6b7280',
+            strokeWidth: marriageValidationStatus === 'error' ? 3 : 2
+          }
+        })
+      }
       
       // Edges: Marriage -> Children
       data.children
@@ -217,6 +222,11 @@ function TreeScreen() {
   
   return (
     <div className="h-screen w-full relative">
+      {/* Data Quality Badge */}
+      <div className="absolute top-4 left-4 z-10">
+        <DataQualityBadge />
+      </div>
+      
       {/* Control Buttons */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <button

@@ -1,299 +1,153 @@
-Welcome to your new TanStack app! 
+# Sidr Lite - Family Tree Builder
 
-# Getting Started
+A modern, fast, and intuitive family tree builder built with React, TypeScript, and TanStack Router.
 
-To run this application:
+## Features
+
+### Core Functionality
+- **Visual Family Tree**: Interactive tree visualization with drag-and-drop support
+- **Quick Entry**: Fast person and relationship creation with smart suggestions
+- **Batch Entry**: Spreadsheet-like interface for bulk data entry
+- **Family Templates**: Pre-built patterns for common family structures
+- **Data Import/Export**: JSON format for data portability
+
+### Advanced Features
+- **Incomplete Parent Marriages**: Support for single-parent families and step-families
+- **Smart Validation**: Real-time validation with helpful error messages
+- **Data Quality Warnings**: Non-intrusive warnings for data quality issues
+- **Name Autocomplete**: Intelligent name suggestions based on common names
+- **Keyboard Navigation**: Full keyboard support for accessibility
+
+### Family Tree Operations
+- **Create Persons**: Add family members with name, gender, and relationships
+- **Create Marriages**: Link spouses with support for incomplete marriages
+- **Add Children**: Link children to parent marriages
+- **Add Siblings**: Quickly add siblings to existing children
+- **Add Parents**: Add parents to orphaned children or complete parent pairs
+- **Complete Parent Pairs**: Add second parent to incomplete marriages
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
 
 ```bash
 npm install
-npm run start
 ```
 
-# Building For Production
+### Development
 
-To build this application for production:
+```bash
+npm run dev
+```
+
+### Production Build
 
 ```bash
 npm run build
 ```
 
-## Testing
+### Testing
 
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+This project uses [Vitest](https://vitest.dev/) for testing:
 
 ```bash
 npm run test
 ```
 
-## Styling
+## Technology Stack
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+- **Frontend**: React 18, TypeScript, TanStack Router
+- **Styling**: Tailwind CSS, Headless UI
+- **Components**: Shadcn/ui components
+- **State Management**: Zustand
+- **Testing**: Vitest, React Testing Library
+- **Build Tool**: Vite
 
+## Project Structure
 
+```
+src/
+├── components/          # Reusable UI components
+├── routes/             # File-based routing
+├── store/              # State management
+├── utils/              # Utility functions
+├── types/              # TypeScript definitions
+└── hooks/              # Custom React hooks
+```
 
-## Shadcn
+## Domain Rules
 
-Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
+The application follows strict domain rules for family tree data integrity:
+
+### Data Model
+- **Persons**: Unique ID, name, gender (M/F only), root status
+- **Marriages**: Can be complete (both spouses) or incomplete (single parent)
+- **Child Links**: Connect children to parent marriages
+- **Validation**: Hard invariants prevent invalid relationships
+
+### Supported Relationships
+- **Complete Marriages**: Traditional two-parent families
+- **Incomplete Marriages**: Single-parent families, step-families
+- **Siblings**: Children of the same parents
+- **Ancestry**: Multi-generation family trees
+
+### Validation Rules
+- **Gender Rules**: Strict M/F gender system
+- **Polygamy Limits**: 4 active marriages for males, 1 for females
+- **Ancestry Rules**: No parent-child cycles or ancestor-descendant marriages
+- **Data Quality**: Warnings for isolated persons, orphaned children, etc.
+
+## Usage
+
+### Quick Entry
+1. Navigate to the Quick Entry page
+2. Select relationship type (spouse, child, parent, sibling)
+3. Choose target person (if applicable)
+4. Enter name and gender
+5. Submit to create the relationship
+
+### Tree View
+1. Navigate to the Tree page
+2. View your family tree visualization
+3. Click on persons or marriages for details
+4. Use context menus for quick actions
+
+### Batch Entry
+1. Switch to Batch Entry mode
+2. Add multiple persons in spreadsheet format
+3. Use templates for common family structures
+4. Process all entries at once
+
+## Development
+
+### Adding Components
+
+Use the latest version of [Shadcn](https://ui.shadcn.com/):
 
 ```bash
 pnpx shadcn@latest add button
 ```
 
+### Adding Routes
 
+Routes are managed as files in `src/routes/`. Add new files to create routes.
 
-## Routing
-This project uses [TanStack Router](https://tanstack.com/router). The initial setup is a file based router. Which means that the routes are managed as files in `src/routes`.
+### State Management
 
-### Adding A Route
+The application uses Zustand for state management with a centralized family tree store.
 
-To add a new route to your application just add another a new file in the `./src/routes` directory.
+## Contributing
 
-TanStack will automatically generate the content of the route file for you.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-Now that you have two routes you can use a `Link` component to navigate between them.
+## License
 
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you use the `<Outlet />` component.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-
-import { Link } from "@tanstack/react-router";
-
-export const Route = createRootRoute({
-  component: () => (
-    <>
-      <header>
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/about">About</Link>
-        </nav>
-      </header>
-      <Outlet />
-      <TanStackRouterDevtools />
-    </>
-  ),
-})
-```
-
-The `<TanStackRouterDevtools />` component is not required so you can remove it if you don't want it in your layout.
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-const peopleRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/people",
-  loader: async () => {
-    const response = await fetch("https://swapi.dev/api/people");
-    return response.json() as Promise<{
-      results: {
-        name: string;
-      }[];
-    }>;
-  },
-  component: () => {
-    const data = peopleRoute.useLoaderData();
-    return (
-      <ul>
-        {data.results.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    );
-  },
-});
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-### React-Query
-
-React-Query is an excellent addition or alternative to route loading and integrating it into you application is a breeze.
-
-First add your dependencies:
-
-```bash
-npm install @tanstack/react-query @tanstack/react-query-devtools
-```
-
-Next we'll need to create a query client and provider. We recommend putting those in `main.tsx`.
-
-```tsx
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-// ...
-
-const queryClient = new QueryClient();
-
-// ...
-
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-
-  root.render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
-}
-```
-
-You can also add TanStack Query Devtools to the root route (optional).
-
-```tsx
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-
-const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <Outlet />
-      <ReactQueryDevtools buttonPosition="top-right" />
-      <TanStackRouterDevtools />
-    </>
-  ),
-});
-```
-
-Now you can use `useQuery` to fetch your data.
-
-```tsx
-import { useQuery } from "@tanstack/react-query";
-
-import "./App.css";
-
-function App() {
-  const { data } = useQuery({
-    queryKey: ["people"],
-    queryFn: () =>
-      fetch("https://swapi.dev/api/people")
-        .then((res) => res.json())
-        .then((data) => data.results as { name: string }[]),
-    initialData: [],
-  });
-
-  return (
-    <div>
-      <ul>
-        {data.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-export default App;
-```
-
-You can find out everything you need to know on how to use React-Query in the [React-Query documentation](https://tanstack.com/query/latest/docs/framework/react/overview).
-
-## State Management
-
-Another common requirement for React applications is state management. There are many options for state management in React. TanStack Store provides a great starting point for your project.
-
-First you need to add TanStack Store as a dependency:
-
-```bash
-npm install @tanstack/store
-```
-
-Now let's create a simple counter in the `src/App.tsx` file as a demonstration.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-function App() {
-  const count = useStore(countStore);
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-    </div>
-  );
-}
-
-export default App;
-```
-
-One of the many nice features of TanStack Store is the ability to derive state from other state. That derived state will update when the base state updates.
-
-Let's check this out by doubling the count using derived state.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store, Derived } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-const doubledStore = new Derived({
-  fn: () => countStore.state * 2,
-  deps: [countStore],
-});
-doubledStore.mount();
-
-function App() {
-  const count = useStore(countStore);
-  const doubledCount = useStore(doubledStore);
-
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-      <div>Doubled - {doubledCount}</div>
-    </div>
-  );
-}
-
-export default App;
-```
-
-We use the `Derived` class to create a new store that is derived from another store. The `Derived` class has a `mount` method that will start the derived store updating.
-
-Once we've created the derived store we can use it in the `App` component just like we would any other store using the `useStore` hook.
-
-You can find out everything you need to know on how to use TanStack Store in the [TanStack Store documentation](https://tanstack.com/store/latest).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+MIT License - see LICENSE file for details.

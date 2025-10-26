@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useFamilyTreeStore } from '../store/familyTreeStore'
 import DeletePersonDialog from './DeletePersonDialog'
+import AddParentPairDialog from './AddParentPairDialog'
 import FamilyStatistics from './FamilyStatistics'
-import { Trash2, Edit, Save, X, Calendar, ChevronDown, ChevronRight, Heart, Baby, Crown } from 'lucide-react'
+import { validateTreeNodes } from '../utils/treeValidation'
+import { checkWarnings } from '../store/validators'
+import { Trash2, Edit, Save, X, Calendar, ChevronDown, ChevronRight, Heart, Baby, Crown, AlertTriangle, UserPlus } from 'lucide-react'
 import type { Gender } from '../types/domain'
 
 export default function PersonCard() {
@@ -19,10 +22,11 @@ export default function PersonCard() {
   } = useFamilyTreeStore()
   
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showAddParentDialog, setShowAddParentDialog] = useState(false)
   const [editingPerson, setEditingPerson] = useState<string | null>(null)
   const [editingMarriage, setEditingMarriage] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
-  const [editGender, setEditGender] = useState<Gender>('U')
+  const [editGender, setEditGender] = useState<Gender>('M')
   const [editMarriageDate, setEditMarriageDate] = useState('')
   const [editDivorceDate, setEditDivorceDate] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
@@ -37,6 +41,69 @@ export default function PersonCard() {
   })
   
   const selectedPerson = selectedPersonId ? data.persons.find(p => p.id === selectedPersonId) : null
+  
+  // Check for warnings related to the selected person
+  const validation = validateTreeNodes(data)
+  const warningData = checkWarnings(data)
+  
+  const personWarnings = selectedPerson ? [
+    // Check if person is isolated
+    ...(Object.keys(validation.nodeErrors).includes(selectedPerson.id) && 
+        validation.nodeErrors[selectedPerson.id].some(error => 
+          error.includes('not connected to the family tree')
+        ) ? [{
+          type: 'isolated',
+          message: 'Not connected to family tree',
+          severity: 'warning' as const
+        }] : []),
+    
+    // Check if person is orphaned
+    ...(warningData.orphanedChildren.includes(selectedPerson.id) ? [{
+      type: 'orphaned',
+      message: 'This person needs parents assigned',
+      severity: 'action' as const,
+      actionLabel: 'Add Parents',
+      actionHandler: () => handleAddParents(selectedPerson.id)
+    }] : []),
+    
+    // Check if person has incomplete parents (only one parent)
+    ...(selectedPerson && (() => {
+      const childLink = data.children.find(c => c.childId === selectedPerson.id)
+      if (!childLink) return false
+      const marriage = data.marriages.find(m => m.id === childLink.marriageId)
+      return marriage && (!marriage.husbandId || !marriage.wifeId)
+    })() ? [{
+      type: 'incomplete-parents',
+      message: 'This person has only one parent',
+      severity: 'action' as const,
+      actionLabel: 'Add Other Parent',
+      actionHandler: () => handleAddSecondParent(selectedPerson.id)
+    }] : [])
+  ] : []
+
+  const handleAddParents = (childId: string) => {
+    // For orphaned children, we need to create a new marriage
+    // This will be handled by the QuickEntryForm
+    setPrefilledForm({ relationshipType: 'parent', targetId: childId, targetType: 'person' })
+  }
+  
+  const handleAddSecondParent = (childId: string) => {
+    // Find the child's marriage and existing parent
+    const childLink = data.children.find(c => c.childId === childId)
+    if (!childLink) return
+    
+    const marriage = data.marriages.find(m => m.id === childLink.marriageId)
+    if (!marriage) return
+    
+    const existingParentId = marriage.husbandId || marriage.wifeId
+    if (!existingParentId) return
+    
+    const existingParent = data.persons.find(p => p.id === existingParentId)
+    if (!existingParent) return
+    
+    // Open AddParentPairDialog with existing parent info
+    setShowAddParentDialog(true)
+  }
 
   const handleStartEditPerson = (personId: string) => {
     const person = data.persons.find(p => p.id === personId)
@@ -87,7 +154,7 @@ export default function PersonCard() {
   const handleCancelPersonEdit = () => {
     setEditingPerson(null)
     setEditName('')
-    setEditGender('U')
+    setEditGender('M')
     setEditError(null)
   }
 
@@ -181,7 +248,6 @@ export default function PersonCard() {
                       {person.isRoot && <Crown size={14} className="text-yellow-600" />}
                       {person.gender === 'M' && <span className="text-blue-600 text-sm">♂</span>}
                       {person.gender === 'F' && <span className="text-pink-600 text-sm">♀</span>}
-                      {person.gender === 'U' && <span className="text-gray-400 text-sm">?</span>}
                     </div>
                     {editingPerson === person.id ? (
                       <div className="space-y-2">
@@ -194,16 +260,37 @@ export default function PersonCard() {
                           placeholder="Enter name (Ctrl+Enter to save, Escape to cancel)"
                           autoFocus
                         />
-                        <div className="flex gap-2">
-                          <select
-                            value={editGender}
-                            onChange={(e) => setEditGender(e.target.value as Gender)}
-                            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="M">Male</option>
-                            <option value="F">Female</option>
-                            <option value="U">Unknown</option>
-                          </select>
+                        <div className="flex gap-1">
+                          <label className={`flex items-center px-2 py-1 rounded text-sm cursor-pointer transition-all duration-200 ${
+                            editGender === 'M' 
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                          }`}>
+                            <input
+                              type="radio"
+                              name="editGender"
+                              value="M"
+                              checked={editGender === 'M'}
+                              onChange={(e) => setEditGender(e.target.value as Gender)}
+                              className="sr-only"
+                            />
+                            <span className="text-xs font-medium">Male (♂)</span>
+                          </label>
+                          <label className={`flex items-center px-2 py-1 rounded text-sm cursor-pointer transition-all duration-200 ${
+                            editGender === 'F' 
+                              ? 'bg-pink-50 text-pink-700 border border-pink-200' 
+                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                          }`}>
+                            <input
+                              type="radio"
+                              name="editGender"
+                              value="F"
+                              checked={editGender === 'F'}
+                              onChange={(e) => setEditGender(e.target.value as Gender)}
+                              className="sr-only"
+                            />
+                            <span className="text-xs font-medium">Female (♀)</span>
+                          </label>
                           <button
                             onClick={handleSavePersonEdit}
                             className="px-2 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 flex items-center gap-1"
@@ -236,7 +323,7 @@ export default function PersonCard() {
                           </button>
                         </div>
                         <p className="text-sm text-gray-500">
-                          {person.gender === 'M' ? 'Male' : person.gender === 'F' ? 'Female' : 'Unknown'}
+                          {person.gender === 'M' ? 'Male' : 'Female'}
                           {person.isRoot && ' • Root'}
                         </p>
                       </div>
@@ -268,9 +355,35 @@ export default function PersonCard() {
               {selectedPerson.isRoot && <Crown size={16} className="text-yellow-600" />}
               {selectedPerson.gender === 'M' && <span className="text-blue-600">♂</span>}
               {selectedPerson.gender === 'F' && <span className="text-pink-600">♀</span>}
-              {selectedPerson.gender === 'U' && <span className="text-gray-400">?</span>}
             </div>
           </div>
+          
+          {/* Warning Indicators */}
+          {personWarnings.length > 0 && (
+            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+              {personWarnings.map((warning, index) => (
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle 
+                      size={14} 
+                      className={warning.severity === 'warning' ? 'text-yellow-600' : 'text-blue-600'} 
+                    />
+                    <span className={warning.severity === 'warning' ? 'text-yellow-800' : 'text-blue-800'}>
+                      {warning.message}
+                    </span>
+                  </div>
+                  {warning.severity === 'action' && warning.actionLabel && warning.actionHandler && (
+                    <button
+                      onClick={warning.actionHandler}
+                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      {warning.actionLabel}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           
           {/* Marriages Section */}
           <div className="mb-4">
@@ -421,7 +534,6 @@ export default function PersonCard() {
                         <div className="flex items-center gap-2">
                           {child?.gender === 'M' && <span className="text-blue-600">♂</span>}
                           {child?.gender === 'F' && <span className="text-pink-600">♀</span>}
-                          {child?.gender === 'U' && <span className="text-gray-400">?</span>}
                           <span className="font-medium">{child?.name || 'Unknown'}</span>
                         </div>
                       </div>
@@ -533,6 +645,32 @@ export default function PersonCard() {
         onClose={() => setShowDeleteDialog(false)}
         personId={selectedPersonId}
       />
+      
+      {/* Add Parent Pair Dialog */}
+      {selectedPerson && (() => {
+        const childLink = data.children.find(c => c.childId === selectedPerson.id)
+        if (!childLink) return null
+        
+        const marriage = data.marriages.find(m => m.id === childLink.marriageId)
+        if (!marriage) return null
+        
+        const existingParentId = marriage.husbandId || marriage.wifeId
+        if (!existingParentId) return null
+        
+        const existingParent = data.persons.find(p => p.id === existingParentId)
+        if (!existingParent) return null
+        
+        return (
+          <AddParentPairDialog
+            isOpen={showAddParentDialog}
+            onClose={() => setShowAddParentDialog(false)}
+            childId={selectedPerson.id}
+            marriageId={marriage.id}
+            existingParentGender={existingParent.gender}
+            suggestedGender={existingParent.gender === 'M' ? 'F' : 'M'}
+          />
+        )
+      })()}
     </div>
   )
 }

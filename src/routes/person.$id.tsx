@@ -63,7 +63,7 @@ function PersonDetailScreen() {
                 {getGenderIcon(person.gender)} {person.name}
               </h1>
               <p className="text-gray-600 capitalize">
-                {person.gender === 'M' ? 'Male' : person.gender === 'F' ? 'Female' : 'Unknown Gender'}
+                {person.gender === 'M' ? 'Male' : 'Female'}
                 {person.isRoot && ' • Root Person'}
               </p>
             </div>
@@ -131,7 +131,7 @@ function PersonDetailScreen() {
                         onClick={() => selectPerson(child.childId)}
                       >
                         <p className="font-medium text-gray-900">
-                          {getGenderIcon(childPerson?.gender || 'U')} {childPerson?.name || 'Unknown'}
+                          {getGenderIcon(childPerson?.gender || 'M')} {childPerson?.name || 'Unknown'}
                         </p>
                       </div>
                     )

@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import type { FamilyTreeState, FamilyTreeActions, FamilyTree, Person, Marriage, ChildLink, FamilyTreeIndices, Gender, MarriageStatus, RelationshipType } from '../types/domain'
-import { validateFamilyTree, ValidationError } from './validators'
+import { validateAndCommit } from './validationExecutor'
+import type { ValidationWarnings } from './validationExecutor'
+import { validateHardInvariants } from './validators'
 import { loadFromStorage, saveToStorage } from '../utils/storage'
-import { validateGenderForMarriage, determineHusbandWife, getGenderErrorMessage } from '../utils/relationshipHelpers'
+import { determineHusbandWife } from '../utils/relationshipHelpers'
 import { calculateDeletionImpact, canDeletePerson } from '../utils/deletionHelpers'
 
 // Generate unique ID with fallback
@@ -22,15 +24,19 @@ function buildIndices(data: FamilyTree): FamilyTreeIndices {
   const marriagesByWife = new Map<string, Marriage[]>()
   
   for (const marriage of data.marriages) {
-    if (!marriagesByHusband.has(marriage.husbandId)) {
-      marriagesByHusband.set(marriage.husbandId, [])
+    if (marriage.husbandId) {
+      if (!marriagesByHusband.has(marriage.husbandId)) {
+        marriagesByHusband.set(marriage.husbandId, [])
+      }
+      marriagesByHusband.get(marriage.husbandId)!.push(marriage)
     }
-    marriagesByHusband.get(marriage.husbandId)!.push(marriage)
     
-    if (!marriagesByWife.has(marriage.wifeId)) {
-      marriagesByWife.set(marriage.wifeId, [])
+    if (marriage.wifeId) {
+      if (!marriagesByWife.has(marriage.wifeId)) {
+        marriagesByWife.set(marriage.wifeId, [])
+      }
+      marriagesByWife.get(marriage.wifeId)!.push(marriage)
     }
-    marriagesByWife.get(marriage.wifeId)!.push(marriage)
   }
   
   const childrenByMarriage = new Map<string, ChildLink[]>()
@@ -67,80 +73,79 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
     const state = get()
     const id = generateId()
     
-    // If this is the first person, make them root
-    const isRoot = state.data.persons.length === 0
-    
-    const person: Person = {
-      id,
-      name: name.trim(),
-      gender,
-      isRoot
-    }
-    
-    const newData: FamilyTree = {
-      ...state.data,
-      persons: [...state.data.persons, person]
-    }
-    
-    // Validate before saving
-    const errors = validateFamilyTree(newData)
-    if (errors.length > 0) {
-      throw new ValidationError(errors)
-    }
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => {
+        const person: Person = {
+          id,
+          name: name.trim(),
+          gender,
+          isRoot: false // Will be recalculated
+        }
+        
+        return {
+          ...data,
+          persons: [...data.persons, person]
+        }
+      },
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+      }
+    )
     
     set({
-      data: newData,
-      indices: buildIndices(newData)
+      data: resultData,
+      indices: buildIndices(resultData)
     })
     
     // Auto-save
-    saveToStorage(newData)
+    saveToStorage(resultData)
     
     return id
   },
   
-  createMarriage: (personAId: string, personBId: string) => {
+  createMarriage: (personAId: string | null, personBId: string | null) => {
     const state = get()
     
-    // Validate persons exist
-    if (!state.indices.personById.has(personAId)) {
+    // Handle null spouse parameters for incomplete parent marriages
+    if (personAId === null && personBId === null) {
+      throw new Error('At least one spouse must be provided')
+    }
+    
+    // Validate persons exist (if not null)
+    if (personAId && !state.indices.personById.has(personAId)) {
       throw new Error('First person not found')
     }
-    if (!state.indices.personById.has(personBId)) {
+    if (personBId && !state.indices.personById.has(personBId)) {
       throw new Error('Second person not found')
     }
     
-    const personA = state.indices.personById.get(personAId)!
-    const personB = state.indices.personById.get(personBId)!
+    let husbandId: string | null = null
+    let wifeId: string | null = null
     
-    // Validate gender compatibility
-    if (!validateGenderForMarriage(personA, personB)) {
-      throw new Error(getGenderErrorMessage(personA, personB))
-    }
-    
-    // Determine husband and wife based on gender
-    const { husbandId, wifeId } = determineHusbandWife(personA, personB)
-    
-    // Check for duplicate marriage
-    const existingMarriage = state.data.marriages.find(
-      m => (m.husbandId === husbandId && m.wifeId === wifeId) ||
-           (m.husbandId === wifeId && m.wifeId === husbandId)
-    )
-    if (existingMarriage) {
-      throw new Error('Marriage already exists between these persons')
-    }
-    
-    // Check polygamy limits
-    const husbandMarriages = state.indices.marriagesByHusband.get(husbandId) || []
-    const activeHusbandMarriages = husbandMarriages.filter(m => m.status === 'active')
-    if (activeHusbandMarriages.length >= 4) {
-      throw new Error('Husband already has 4 active marriages')
-    }
-    
-    const wifeMarriages = state.indices.marriagesByWife.get(wifeId) || []
-    const activeWifeMarriages = wifeMarriages.filter(m => m.status === 'active')
-    if (activeWifeMarriages.length >= 1) {
-      throw new Error('Wife already has an active marriage')
+    if (personAId && personBId) {
+      // Complete marriage - determine husband and wife based on gender
+      const personA = state.indices.personById.get(personAId)!
+      const personB = state.indices.personById.get(personBId)!
+      const result = determineHusbandWife(personA, personB)
+      husbandId = result.husbandId
+      wifeId = result.wifeId
+    } else if (personAId) {
+      // Single parent marriage - determine role based on gender
+      const person = state.indices.personById.get(personAId)!
+      if (person.gender === 'M') {
+        husbandId = personAId
+      } else {
+        wifeId = personAId
+      }
+    } else if (personBId) {
+      // Single parent marriage - determine role based on gender
+      const person = state.indices.personById.get(personBId)!
+      if (person.gender === 'M') {
+        husbandId = personBId
+      } else {
+        wifeId = personBId
+      }
     }
     
     const id = generateId()
@@ -153,24 +158,24 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       divorceDate: null
     }
     
-    const newData: FamilyTree = {
-      ...state.data,
-      marriages: [...state.data.marriages, marriage]
-    }
-    
-    // Validate before saving
-    const errors = validateFamilyTree(newData)
-    if (errors.length > 0) {
-      throw new ValidationError(errors)
-    }
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => ({
+        ...data,
+        marriages: [...data.marriages, marriage]
+      }),
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+      }
+    )
     
     set({
-      data: newData,
-      indices: buildIndices(newData)
+      data: resultData,
+      indices: buildIndices(resultData)
     })
     
     // Auto-save
-    saveToStorage(newData)
+    saveToStorage(resultData)
     
     return id
   },
@@ -195,24 +200,24 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       marriageId
     }
     
-    const newData: FamilyTree = {
-      ...updatedState.data,
-      children: [...updatedState.data.children, childLink]
-    }
-    
-    // Validate before saving
-    const errors = validateFamilyTree(newData)
-    if (errors.length > 0) {
-      throw new ValidationError(errors)
-    }
+    const resultData = validateAndCommit(
+      updatedState.data,
+      (data) => ({
+        ...data,
+        children: [...data.children, childLink]
+      }),
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+      }
+    )
     
     set({
-      data: newData,
-      indices: buildIndices(newData)
+      data: resultData,
+      indices: buildIndices(resultData)
     })
     
     // Auto-save
-    saveToStorage(newData)
+    saveToStorage(resultData)
     
     return childId
   },
@@ -225,49 +230,33 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       throw new Error('Marriage not found')
     }
     
-    const updatedMarriage = { ...marriage, status }
-    const newData: FamilyTree = {
-      ...state.data,
-      marriages: state.data.marriages.map(m => 
-        m.id === marriageId ? updatedMarriage : m
-      )
+    // Validate status transitions
+    if (marriage.status === 'divorced' && status === 'active') {
+      throw new Error('Cannot reactivate a divorced marriage. Create a new marriage record for remarriage.')
     }
     
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => ({
+        ...data,
+        marriages: data.marriages.map(m => 
+          m.id === marriageId ? { ...m, status } : m
+        )
+      }),
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+      }
+    )
+    
     set({
-      data: newData,
-      indices: buildIndices(newData)
+      data: resultData,
+      indices: buildIndices(resultData)
     })
     
     // Auto-save
-    saveToStorage(newData)
+    saveToStorage(resultData)
   },
   
-  setRoot: (personId: string) => {
-    const state = get()
-    
-    if (!state.indices.personById.has(personId)) {
-      throw new Error('Person not found')
-    }
-    
-    // Remove root status from all persons
-    const updatedPersons = state.data.persons.map(p => ({ ...p, isRoot: false }))
-    
-    // Set new root
-    const newData: FamilyTree = {
-      ...state.data,
-      persons: updatedPersons.map(p => 
-        p.id === personId ? { ...p, isRoot: true } : p
-      )
-    }
-    
-    set({
-      data: newData,
-      indices: buildIndices(newData)
-    })
-    
-    // Auto-save
-    saveToStorage(newData)
-  },
   
   // Selection
   selectPerson: (personId: string | null) => {
@@ -290,10 +279,10 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
   
   // Data management
   loadData: (data: FamilyTree) => {
-    // Validate data before loading
-    const errors = validateFamilyTree(data)
+    // Validate data before loading using the new validation system
+    const errors = validateHardInvariants(data)
     if (errors.length > 0) {
-      throw new ValidationError(errors)
+      throw new Error(`Validation failed: ${errors.map(e => e.message).join(', ')}`)
     }
     
     set({
@@ -303,6 +292,35 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
     
     saveToStorage(data)
   },
+
+  setRoot: (personId: string) => {
+    const state = get()
+    
+    if (!state.indices.personById.has(personId)) {
+      throw new Error('Person not found')
+    }
+
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => ({
+        ...data,
+        persons: data.persons.map(p => ({
+          ...p,
+          isRoot: p.id === personId
+        }))
+      }),
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+      }
+    )
+
+    set({
+      data: resultData,
+      indices: buildIndices(resultData)
+    })
+
+    saveToStorage(resultData)
+  },
   
   exportData: () => {
     return get().data
@@ -310,7 +328,7 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
   
   clearData: () => {
     const emptyData: FamilyTree = {
-      version: 1,
+      version: 2,
       persons: [],
       marriages: [],
       children: []
@@ -340,11 +358,8 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       throw new Error('Cannot add sibling: person has no parents')
     }
     
-    // Create the sibling
-    const siblingId = get().createPerson(siblingName, siblingGender)
-    
-    // Add the sibling to the same marriage
-    get().addChild(parentsMarriage.marriageId, siblingName, siblingGender)
+    // Add the sibling to the same marriage (addChild creates the person internally)
+    const siblingId = get().addChild(parentsMarriage.marriageId, siblingName, siblingGender)
     
     return siblingId
   },
@@ -360,42 +375,93 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
     const parentId = get().createPerson(parentName, parentGender)
     
     // Find existing parent of the child
-    const existingParentMarriage = state.data.children.find(c => c.childId === childId)
-    if (existingParentMarriage) {
-      // Child already has parents - create marriage with existing parent
-      const marriage = state.data.marriages.find(m => m.id === existingParentMarriage.marriageId)
+    const existingParentLink = state.data.children.find(c => c.childId === childId)
+    
+    if (existingParentLink) {
+      // Child already has a marriage - check if it's incomplete
+      const marriage = state.data.marriages.find(m => m.id === existingParentLink.marriageId)
+      
       if (marriage) {
-        // Get the existing parent (the one who isn't the child)
-        const existingParentId = marriage.husbandId === childId ? marriage.wifeId : marriage.husbandId
-        if (existingParentId !== childId) {
-          // Create marriage between new parent and existing parent
-          get().createMarriage(parentId, existingParentId)
+        const isIncomplete = !marriage.husbandId || !marriage.wifeId
+        
+        if (isIncomplete) {
+          // Complete the existing marriage
+          get().completeParentMarriage(marriage.id, parentId)
+        } else {
+          // Marriage is complete - this shouldn't happen per domain rules
+          throw new Error('Child already has two parents')
         }
       }
     } else {
-      // Child has no parents yet - create a placeholder marriage
-      // We need to create a placeholder spouse for the new parent
-      const placeholderGender = parentGender === 'M' ? 'F' : 'M'
-      const placeholderId = get().createPerson('Unknown Spouse', placeholderGender)
+      // Child has no parents yet - create single-parent marriage
+      const marriageId = get().createMarriage(parentId, null)
       
-      // Create marriage between new parent and placeholder
-      get().createMarriage(parentId, placeholderId)
+      // Link child to marriage
+      const childLink: ChildLink = { childId, marriageId }
       
-      // Add child to this marriage
-      const newMarriage = state.data.marriages.find(m => 
-        (m.husbandId === parentId && m.wifeId === placeholderId) ||
-        (m.husbandId === placeholderId && m.wifeId === parentId)
+      const resultData = validateAndCommit(
+        state.data,
+        (data) => ({ ...data, children: [...data.children, childLink] }),
+        (warnings) => console.warn('Parent creation warnings:', warnings)
       )
-      if (newMarriage) {
-        get().addChild(newMarriage.id, 'Unknown Child', 'U')
-      }
+      
+      set({ data: resultData, indices: buildIndices(resultData) })
+      saveToStorage(resultData)
     }
     
     return parentId
   },
 
-  deletePerson: (personId: string, force: boolean = false) => {
+  completeParentMarriage: (marriageId: string, secondParentId: string) => {
     const state = get()
+    
+    // Validate marriage exists and is incomplete
+    const marriage = state.data.marriages.find(m => m.id === marriageId)
+    if (!marriage) {
+      throw new Error('Marriage not found')
+    }
+    
+    const isIncomplete = !marriage.husbandId || !marriage.wifeId
+    if (!isIncomplete) {
+      throw new Error('Marriage is already complete')
+    }
+    
+    // Validate second parent exists
+    if (!state.indices.personById.has(secondParentId)) {
+      throw new Error('Second parent not found')
+    }
+    
+    const secondParent = state.indices.personById.get(secondParentId)!
+    
+    // Determine which slot to fill based on gender
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => ({
+        ...data,
+        marriages: data.marriages.map(m => {
+          if (m.id === marriageId) {
+            if (!m.husbandId && secondParent.gender === 'M') {
+              return { ...m, husbandId: secondParentId }
+            } else if (!m.wifeId && secondParent.gender === 'F') {
+              return { ...m, wifeId: secondParentId }
+            } else {
+              throw new Error('Gender mismatch for marriage completion')
+            }
+          }
+          return m
+        })
+      }),
+      (warnings) => console.warn('Marriage completion warnings:', warnings)
+    )
+    
+    set({ data: resultData, indices: buildIndices(resultData) })
+    saveToStorage(resultData)
+  },
+
+  deletePerson: (options: { personId: string, forceOrphan?: boolean, forceRootDelete?: boolean }) => {
+    const state = get()
+    
+    const { personId, forceOrphan = false, forceRootDelete = false } = options
     
     // Check if person exists
     if (!state.indices.personById.has(personId)) {
@@ -405,8 +471,8 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
     const person = state.indices.personById.get(personId)!
     
     // Check if this is the root person
-    if (person.isRoot && !force) {
-      throw new Error('Cannot delete root person without force flag')
+    if (person.isRoot && !forceRootDelete) {
+      throw new Error('Cannot delete root person without forceRootDelete flag')
     }
     
     // Calculate deletion impact
@@ -418,20 +484,13 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       throw new Error(reason || 'Cannot delete person')
     }
     
-    // Perform cascade deletion
-    const newData: FamilyTree = {
-      ...state.data,
-      persons: state.data.persons.filter(p => p.id !== personId),
-      marriages: state.data.marriages.filter(m => 
-        m.husbandId !== personId && m.wifeId !== personId
-      ),
-      children: state.data.children.filter(c => 
-        !impact.marriagesToDelete.some(m => m.id === c.marriageId)
-      )
+    // Check for orphaned children
+    if (impact.orphanedChildren.length > 0 && !forceOrphan) {
+      throw new Error(`Cannot delete person: would orphan ${impact.orphanedChildren.length} children. Use forceOrphan flag to proceed.`)
     }
     
-    // If this was the last person, clear everything
-    if (newData.persons.length === 0) {
+    // If this would be the last person, clear everything
+    if (state.data.persons.length === 1) {
       const emptyData: FamilyTree = {
         version: 1,
         persons: [],
@@ -456,11 +515,50 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       }
     }
     
-    // Validate before saving
-    const errors = validateFamilyTree(newData)
-    if (errors.length > 0) {
-      throw new ValidationError(errors)
-    }
+    // Perform deletion with validation
+    const resultData = validateAndCommit(
+      state.data,
+      (data) => {
+        // Remove person
+        const persons = data.persons.filter(p => p.id !== personId)
+        
+        // Update marriage statuses based on forceOrphan flag
+        const marriages = data.marriages.map(marriage => {
+          if (marriage.husbandId === personId || marriage.wifeId === personId) {
+            // Check if this marriage has children
+            const hasChildren = data.children.some(c => c.marriageId === marriage.id)
+            if (hasChildren && forceOrphan) {
+              return { ...marriage, status: 'terminated' as MarriageStatus }
+            } else if (!hasChildren) {
+              return { ...marriage, status: 'terminated' as MarriageStatus }
+            }
+            // If has children and not forceOrphan, this should have been caught earlier
+            return marriage
+          }
+          return marriage
+        })
+        
+        // Remove child links if not forceOrphan
+        const children = forceOrphan 
+          ? data.children 
+          : data.children.filter(c => 
+              !impact.marriagesToDelete.some(m => m.id === c.marriageId)
+            )
+        
+        return {
+          ...data,
+          persons,
+          marriages,
+          children
+        }
+      },
+      (warnings: ValidationWarnings) => {
+        console.warn('Data quality warnings:', warnings)
+        if (warnings.orphanedChildren.length > 0) {
+          console.warn(`${warnings.orphanedChildren.length} children promoted to root`)
+        }
+      }
+    )
     
     // Clear selection if deleted person was selected
     const newSelectedPersonId = state.selectedPersonId === personId ? null : state.selectedPersonId
@@ -469,22 +567,22 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
       : state.selectedMarriageId
     
     set({
-      data: newData,
-      indices: buildIndices(newData),
+      data: resultData,
+      indices: buildIndices(resultData),
       selectedPersonId: newSelectedPersonId,
       selectedMarriageId: newSelectedMarriageId
     })
     
     // Auto-save
-    saveToStorage(newData)
+    saveToStorage(resultData)
     
-      return {
-        deletedPerson: person,
-        deletedMarriages: impact.marriagesToDelete,
-        deletedChildLinks: impact.childLinksToDelete,
-        orphanedChildren: impact.orphanedChildren
-      }
-    },
+    return {
+      deletedPerson: person,
+      deletedMarriages: impact.marriagesToDelete,
+      deletedChildLinks: impact.childLinksToDelete,
+      orphanedChildren: impact.orphanedChildren
+    }
+  },
 
     updatePersonName: (personId: string, newName: string) => {
       const state = get()
@@ -497,24 +595,25 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
         throw new Error('Name must be at least 2 characters long')
       }
 
-      const newData: FamilyTree = {
-        ...state.data,
-        persons: state.data.persons.map(p => 
-          p.id === personId ? { ...p, name: newName.trim() } : p
-        )
-      }
-
-      const errors = validateFamilyTree(newData)
-      if (errors.length > 0) {
-        throw new ValidationError(errors)
-      }
+      const resultData = validateAndCommit(
+        state.data,
+        (data) => ({
+          ...data,
+          persons: data.persons.map(p => 
+            p.id === personId ? { ...p, name: newName.trim() } : p
+          )
+        }),
+        (warnings: ValidationWarnings) => {
+          console.warn('Data quality warnings:', warnings)
+        }
+      )
 
       set({
-        data: newData,
-        indices: buildIndices(newData)
+        data: resultData,
+        indices: buildIndices(resultData)
       })
 
-      saveToStorage(newData)
+      saveToStorage(resultData)
     },
 
     updatePersonGender: (personId: string, newGender: Gender) => {
@@ -524,24 +623,25 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
         throw new Error('Person not found')
       }
 
-      const newData: FamilyTree = {
-        ...state.data,
-        persons: state.data.persons.map(p => 
-          p.id === personId ? { ...p, gender: newGender } : p
-        )
-      }
-
-      const errors = validateFamilyTree(newData)
-      if (errors.length > 0) {
-        throw new ValidationError(errors)
-      }
+      const resultData = validateAndCommit(
+        state.data,
+        (data) => ({
+          ...state.data,
+          persons: data.persons.map(p => 
+            p.id === personId ? { ...p, gender: newGender } : p
+          )
+        }),
+        (warnings: ValidationWarnings) => {
+          console.warn('Data quality warnings:', warnings)
+        }
+      )
 
       set({
-        data: newData,
-        indices: buildIndices(newData)
+        data: resultData,
+        indices: buildIndices(resultData)
       })
 
-      saveToStorage(newData)
+      saveToStorage(resultData)
     },
 
     updateMarriageDates: (marriageId: string, marriageDate: string | null, divorceDate: string | null) => {
@@ -551,24 +651,25 @@ const useFamilyTreeStore = create<FamilyTreeState & FamilyTreeActions>((set, get
         throw new Error('Marriage not found')
       }
 
-      const newData: FamilyTree = {
-        ...state.data,
-        marriages: state.data.marriages.map(m => 
-          m.id === marriageId ? { ...m, marriageDate, divorceDate } : m
-        )
-      }
-
-      const errors = validateFamilyTree(newData)
-      if (errors.length > 0) {
-        throw new ValidationError(errors)
-      }
+      const resultData = validateAndCommit(
+        state.data,
+        (data) => ({
+          ...data,
+          marriages: data.marriages.map(m => 
+            m.id === marriageId ? { ...m, marriageDate, divorceDate } : m
+          )
+        }),
+        (warnings: ValidationWarnings) => {
+          console.warn('Data quality warnings:', warnings)
+        }
+      )
 
       set({
-        data: newData,
-        indices: buildIndices(newData)
+        data: resultData,
+        indices: buildIndices(resultData)
       })
 
-      saveToStorage(newData)
+      saveToStorage(resultData)
     },
   
   // Internal helpers

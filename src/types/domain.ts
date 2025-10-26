@@ -1,18 +1,18 @@
-export type Gender = 'M' | 'F' | 'U'
-export type MarriageStatus = 'active' | 'divorced' | 'widowed'
+export type Gender = 'M' | 'F'
+export type MarriageStatus = 'active' | 'divorced' | 'widowed' | 'terminated'
 export type RelationshipType = 'root' | 'spouse' | 'child' | 'parent' | 'sibling'
 
 export interface Person {
   id: string
   name: string
   gender: Gender
-  isRoot: boolean
+  isRoot: boolean // derived: true if this person is not a child in any ChildLink
 }
 
 export interface Marriage {
   id: string
-  husbandId: string
-  wifeId: string
+  husbandId: string | null  // Allow null for incomplete parent pairs
+  wifeId: string | null      // Allow null for incomplete parent pairs
   status: MarriageStatus
   marriageDate: string | null
   divorceDate: string | null
@@ -57,7 +57,7 @@ export interface FamilyTreeState {
 export interface FamilyTreeActions {
   // Core operations
   createPerson: (name: string, gender: Gender) => string
-  createMarriage: (personAId: string, personBId: string) => string
+  createMarriage: (personAId: string | null, personBId: string | null) => string
   addChild: (marriageId: string, name: string, gender: Gender) => string
   setMarriageStatus: (marriageId: string, status: MarriageStatus) => void
   setRoot: (personId: string) => void
@@ -65,9 +65,10 @@ export interface FamilyTreeActions {
   // Advanced relationship operations
   addSibling: (personId: string, siblingName: string, siblingGender: Gender) => string
   addParent: (childId: string, parentName: string, parentGender: Gender) => string
+  completeParentMarriage: (marriageId: string, secondParentId: string) => void
 
   // Deletion operations
-  deletePerson: (personId: string, force: boolean) => { deletedPerson: Person, deletedMarriages: Marriage[], deletedChildLinks: ChildLink[], orphanedChildren: Person[] }
+  deletePerson: (options: { personId: string, forceOrphan?: boolean, forceRootDelete?: boolean }) => { deletedPerson: Person, deletedMarriages: Marriage[], deletedChildLinks: ChildLink[], orphanedChildren: Person[] }
 
   // Update operations
   updatePersonName: (personId: string, newName: string) => void

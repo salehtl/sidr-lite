@@ -39,7 +39,7 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
     if (!spouseName) return
     
     const spouseGender = prompt('Enter spouse gender (M/F/U):') as Gender
-    if (!spouseGender || !['M', 'F', 'U'].includes(spouseGender)) {
+    if (!spouseGender || !['M', 'F'].includes(spouseGender)) {
       alert('Invalid gender. Please enter M, F, or U.')
       return
     }
@@ -73,7 +73,7 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
     if (!childName) return
     
     const childGender = prompt('Enter child gender (M/F/U):') as Gender
-    if (!childGender || !['M', 'F', 'U'].includes(childGender)) {
+    if (!childGender || !['M', 'F'].includes(childGender)) {
       alert('Invalid gender. Please enter M, F, or U.')
       return
     }
@@ -105,7 +105,7 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
     if (!siblingName) return
     
     const siblingGender = prompt('Enter sibling gender (M/F/U):') as Gender
-    if (!siblingGender || !['M', 'F', 'U'].includes(siblingGender)) {
+    if (!siblingGender || !['M', 'F'].includes(siblingGender)) {
       alert('Invalid gender. Please enter M, F, or U.')
       return
     }
@@ -137,9 +137,9 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
     const parentName = prompt('Enter parent name:')
     if (!parentName) return
     
-    const parentGender = prompt('Enter parent gender (M/F/U):') as Gender
-    if (!parentGender || !['M', 'F', 'U'].includes(parentGender)) {
-      alert('Invalid gender. Please enter M, F, or U.')
+    const parentGender = prompt('Enter parent gender (M/F):') as Gender
+    if (!parentGender || !['M', 'F'].includes(parentGender)) {
+      alert('Invalid gender. Please enter M or F.')
       return
     }
     
@@ -180,7 +180,7 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
       const person = nodeData as Person
       if (confirm(`Delete ${person.name}? This will also delete all their relationships.`)) {
         try {
-          deletePerson(person.id, false)
+          deletePerson({ personId: person.id })
           onClose()
         } catch (error) {
           alert(`Cannot delete person: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -192,7 +192,7 @@ export default function NodeActionMenu({ nodeType, nodeData, onClose, position }
         const husband = familyData.persons.find(p => p.id === marriage.husbandId)
         if (husband) {
           try {
-            deletePerson(husband.id, false)
+            deletePerson({ personId: husband.id })
             onClose()
           } catch (error) {
             alert(`Cannot delete marriage: ${error instanceof Error ? error.message : 'Unknown error'}`)

@@ -46,8 +46,8 @@ export default function SmartPicker({
       return persons.map(person => ({
         id: person.id,
         label: person.name,
-        subtitle: `${person.gender === 'M' ? 'Male' : person.gender === 'F' ? 'Female' : 'Unknown'}${person.isRoot ? ' • Root' : ''}`,
-        icon: person.gender === 'M' ? '♂' : person.gender === 'F' ? '♀' : '?',
+        subtitle: `${person.gender === 'M' ? 'Male' : 'Female'}${person.isRoot ? ' • Root' : ''}`,
+        icon: person.gender === 'M' ? '♂' : '♀',
         gender: person.gender,
         isRoot: person.isRoot
       }))

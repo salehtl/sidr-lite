@@ -16,7 +16,7 @@ export default function AddChildModal({
   parentNames
 }: AddChildModalProps) {
   const [name, setName] = useState('')
-  const [gender, setGender] = useState<Gender>('U')
+  const [gender, setGender] = useState<Gender>('M')
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -39,7 +39,7 @@ export default function AddChildModal({
 
   const handleClose = () => {
     setName('')
-    setGender('U')
+    setGender('M')
     setError(null)
     onClose()
   }
@@ -107,17 +107,6 @@ export default function AddChildModal({
                   className="mr-2"
                 />
                 <span className="text-sm">Female (♀)</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="gender"
-                  value="U"
-                  checked={gender === 'U'}
-                  onChange={(e) => setGender(e.target.value as Gender)}
-                  className="mr-2"
-                />
-                <span className="text-sm">Unknown (?)</span>
               </label>
             </div>
           </div>

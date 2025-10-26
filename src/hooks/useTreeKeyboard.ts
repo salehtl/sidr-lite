@@ -31,7 +31,7 @@ export function useTreeKeyboard(options: TreeKeyboardOptions = {}) {
             // Default delete behavior
             if (confirm('Delete selected person?')) {
               try {
-                deletePerson(selectedPersonId, false)
+                deletePerson({ personId: selectedPersonId })
               } catch (error) {
                 alert(`Cannot delete person: ${error instanceof Error ? error.message : 'Unknown error'}`)
               }

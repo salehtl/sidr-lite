@@ -62,19 +62,23 @@ export function useTreeSync(
       const marriageNodeId = `marriage-${marriage.id}`
       
       // Person -> Marriage edges
-      edges.push({
-        id: `${marriage.husbandId}-${marriageNodeId}`,
-        source: marriage.husbandId,
-        target: marriageNodeId,
-        type: 'smoothstep'
-      })
+      if (marriage.husbandId) {
+        edges.push({
+          id: `${marriage.husbandId}-${marriageNodeId}`,
+          source: marriage.husbandId,
+          target: marriageNodeId,
+          type: 'smoothstep'
+        })
+      }
       
-      edges.push({
-        id: `${marriageNodeId}-${marriage.wifeId}`,
-        source: marriageNodeId,
-        target: marriage.wifeId,
-        type: 'smoothstep'
-      })
+      if (marriage.wifeId) {
+        edges.push({
+          id: `${marriageNodeId}-${marriage.wifeId}`,
+          source: marriageNodeId,
+          target: marriage.wifeId,
+          type: 'smoothstep'
+        })
+      }
       
       // Marriage -> Children edges
       data.children

@@ -65,7 +65,7 @@ export default function MarriageNode({ data }: MarriageNodeProps) {
     const childName = prompt('Enter child name:')
     if (childName) {
       const childGender = prompt('Enter child gender (M/F/U):') as Gender
-      if (childGender && ['M', 'F', 'U'].includes(childGender)) {
+      if (childGender && ['M', 'F'].includes(childGender)) {
         try {
           addChild(marriage.id, childName, childGender)
         } catch (error) {
@@ -93,7 +93,7 @@ export default function MarriageNode({ data }: MarriageNodeProps) {
       if (husband && wife) {
         // Delete one of the spouses (this will cascade delete the marriage)
         try {
-          deletePerson(husband.id, false)
+          deletePerson({ personId: husband.id })
         } catch (error) {
           alert(`Cannot delete marriage: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }

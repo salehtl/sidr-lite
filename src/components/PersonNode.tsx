@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Handle, Position } from 'reactflow'
 import { useFamilyTreeStore } from '../store/familyTreeStore'
+import { checkWarnings } from '../store/validators'
 import { Edit, Trash2, UserPlus, Baby, Users, UserCheck } from 'lucide-react'
 import AddPersonModal from './modals/AddPersonModal'
 import ConfirmDialog from './modals/ConfirmDialog'
@@ -39,17 +40,29 @@ export default function PersonNode({ data }: PersonNodeProps) {
     updatePersonGender
   } = useFamilyTreeStore()
   
+  // Check if person is orphaned (needs parents)
+  const warningData = checkWarnings(familyData)
+  const isOrphaned = warningData.orphanedChildren.includes(person.id)
+  
+  // Check if person has incomplete parents (only one parent)
+  const hasIncompleteParents = (() => {
+    const childLink = familyData.children.find(c => c.childId === person.id)
+    if (!childLink) return false
+    const marriage = familyData.marriages.find(m => m.id === childLink.marriageId)
+    return marriage && (!marriage.husbandId || !marriage.wifeId)
+  })()
+  
   const getGenderColor = (gender: string) => {
     const baseColors = {
       'M': 'bg-gradient-to-br from-blue-100 to-blue-200',
       'F': 'bg-gradient-to-br from-pink-100 to-pink-200',
-      'U': 'bg-gradient-to-br from-gray-100 to-gray-200'
+      // Removed 'U' gender support
     }
     
     const borderColors = {
       'M': 'border-blue-400',
       'F': 'border-pink-400', 
-      'U': 'border-gray-400'
+      // Removed 'U' gender support
     }
     
     const validationColors = {
@@ -70,7 +83,7 @@ export default function PersonNode({ data }: PersonNodeProps) {
   }
   
   const handleGenderToggle = () => {
-    const nextGender: Gender = person.gender === 'M' ? 'F' : person.gender === 'F' ? 'U' : 'M'
+    const nextGender: Gender = person.gender === 'M' ? 'F' : 'M'
     try {
       updatePersonGender(person.id, nextGender)
     } catch (error) {
@@ -141,7 +154,7 @@ export default function PersonNode({ data }: PersonNodeProps) {
 
   const handleConfirmDelete = () => {
     try {
-      deletePerson(person.id, false)
+      deletePerson({ personId: person.id })
     } catch (error) {
       alert(`Cannot delete person: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
@@ -250,6 +263,16 @@ export default function PersonNode({ data }: PersonNodeProps) {
             {getGenderIcon(person.gender)}
           </span>
           {person.isRoot && <span className="text-xs bg-yellow-200 text-yellow-800 px-1 rounded">ROOT</span>}
+          {isOrphaned && (
+            <span className="text-xs bg-orange-200 text-orange-800 px-1 rounded flex items-center gap-1">
+              👥 Needs Parents
+            </span>
+          )}
+          {hasIncompleteParents && (
+            <span className="text-xs bg-blue-200 text-blue-800 px-1 rounded flex items-center gap-1">
+              👤 1 Parent
+            </span>
+          )}
           {validationStatus === 'error' && (
             <span className="text-xs bg-red-200 text-red-800 px-1 rounded flex items-center gap-1">
               ⚠️ {errors.length}
